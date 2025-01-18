@@ -3,7 +3,7 @@ import numpy as np
 from constants import *
 
 @jit(nopython=True)
-def mee_dynamics(elements, mu, dt, f_perturbation):
+def mee_dynamics(elements, mu, f_perturbation):
     """Compute rigid body dynamics in Modified Equinoctial Elements (MEE).
 
     Args:
@@ -104,3 +104,152 @@ def get_velocity(rv):
     """
     v = rv[3:]
     return np.linalg.norm(v)
+
+def mee_to_lla(mee, mu=MU_EARTH):
+    """
+    Convert Modified Equinoctial Elements (MEE) to geodetic latitude, longitude, and altitude.
+    
+    Parameters:
+    mee : array-like
+        Modified Equinoctial Elements [p, f, g, h, k, L]
+    mu : float, optional
+        Gravitational parameter of the central body (default is Earth's gravitational parameter)
+    
+    Returns:
+    float, float, float
+        Geodetic latitude, longitude, and altitude in degrees, degrees, and kilometers, respectively
+    """
+    # Extract MEE elements
+    p, f, g, h, k, L = mee
+    
+    # Compute semi-latus rectum
+    a = p / (1 - f**2 - g**2)
+    
+    # Compute eccentricity vector
+    e_vec = np.array([h, k, 0])
+    
+    # Compute eccentricity
+    e = np.linalg.norm(e_vec)
+    
+    # Compute inclination
+    i = 2 * np.arctan(np.sqrt(h**2 + k**2))
+    
+    # Compute right ascension of the ascending node
+    Omega = np.arctan2(k, h)
+    
+    # Compute argument of latitude
+    u = L - Omega
+    
+    # Compute true anomaly
+    sin_nu = np.sqrt(h**2 + k**2) * np.sin(L - Omega) / (1 + f * np.cos(L) + g * np.sin(L))
+    cos_nu = (f * np.cos(L) + g * np.sin(L) + 1) / (1 + f * np.cos(L) + g * np.sin(L))
+    nu = np.arctan2(sin_nu, cos_nu)
+    
+    # Compute geodetic latitude
+    lat = np.arctan2(np.sin(u) * np.sin(i), np.cos(u))
+    
+    # Compute longitude
+    lon = Omega + nu
+    
+    # Compute altitude
+    alt = a * (1 - e**2) / (1 + e * np.cos(nu)) - EARTH_RADIUS_KM
+    
+    # Convert latitude and longitude to degrees
+    lat_deg = np.degrees(lat)
+    lon_deg = np.degrees(lon)
+    
+    return np.array([lat_deg, lon_deg, alt])
+
+
+def lla_to_mee(lat, lon, alt, mu=MU_EARTH):
+    """
+    Convert geodetic latitude, longitude, and altitude to Modified Equinoctial Elements (MEE).
+    
+    Parameters:
+    lat : float
+        Geodetic latitude in degrees
+    lon : float
+        Longitude in degrees
+    alt : float
+        Altitude in kilometers
+    mu : float, optional
+        Gravitational parameter of the central body (default is Earth's gravitational parameter)
+    
+    Returns:
+    np.ndarray
+        Modified Equinoctial Elements [p, f, g, h, k, L]
+    """
+    # Convert latitude and longitude to radians
+    lat_rad = np.radians(lat)
+    lon_rad = np.radians(lon)
+    
+    # Compute Earth's radius at the given latitude
+    r = EARTH_RADIUS_KM / np.sqrt(1 - EARTH_ECCENTRICITY**2 * np.sin(lat_rad)**2)
+    
+    # Compute position vector in ECEF frame
+    x = (r + alt) * np.cos(lat_rad) * np.cos(lon_rad)
+    y = (r + alt) * np.cos(lat_rad) * np.sin(lon_rad)
+    z = (r * (1 - EARTH_ECCENTRICITY**2) + alt) * np.sin(lat_rad)
+    
+    # Compute velocity vector in ECEF frame
+    v = np.sqrt(mu / r) / np.sqrt(1 + (2 * alt * r + alt**2) / mu)
+    vx = -v * np.sin(lat_rad) * np.cos(lon_rad)
+    vy = -v * np.sin(lat_rad) * np.sin(lon_rad)
+    vz = v * np.cos(lat_rad)
+    
+    # Convert position and velocity vectors to Modified Equinoctial Elements (MEE)
+    mee = rv_to_mee(np.array([x, y, z, vx, vy, vz]), mu)
+    
+    return mee
+
+def rv_to_mee(rv, mu=MU_EARTH):
+    """
+    Convert state vector to Modified Equinoctial Elements (MEE).
+    
+    Parameters:
+    rv : array-like
+        State vector [x, y, z, vx, vy, vz]
+    mu : float, optional
+        Gravitational parameter of the central body (default is Earth's gravitational parameter)
+    
+    Returns:
+    np.ndarray
+        Modified Equinoctial Elements [p, f, g, h, k, L]
+    """
+    # Extract position and velocity vectors
+    r = rv[:3]
+    v = rv[3:]
+    
+    # Compute specific angular momentum
+    h = np.cross(r, v)
+    
+    # Compute eccentricity vector
+    e_vec = np.cross(v, h) / mu - r / np.linalg.norm(r)
+    
+    # Compute eccentricity
+    e = np.linalg.norm(e_vec)
+    
+    # Compute inclination
+    i = np.arccos(h[2] / np.linalg.norm(h))
+    
+    # Compute right ascension of the ascending node
+    Omega = np.arctan2(h[0], -h[1])
+    
+    # Compute argument of latitude
+    u = np.arctan2(r[2] / np.sin(i), r[0] * np.cos(Omega) + r[1] * np.sin(Omega))
+    
+    # Compute true anomaly
+    nu = np.arctan2(np.dot(r, v) / np.linalg.norm(h), 1 - np.linalg.norm(r) / mu)
+    
+    # Compute semi-major axis
+    a = 1 / (2 / np.linalg.norm(r) - np.linalg.norm(v)**2 / mu)
+    
+    # Compute MEE elements
+    p = a * (1 - e**2)
+    f = e_vec[0] * np.sin(u) - e_vec[1] * np.cos(u)
+    g = e_vec[0] * np.cos(u) + e_vec[1] * np.sin(u)
+    h = np.tan(i / 2) * np.sin(Omega)
+    k = np.tan(i / 2) * np.cos(Omega)
+    L = u + nu
+    
+    return np.array([p, f, g, h, k, L])
