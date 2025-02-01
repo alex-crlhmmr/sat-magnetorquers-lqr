@@ -69,22 +69,22 @@ class OrbitalPropagator:
         Returns:
         tuple: (times, positions)
             - times (numpy.ndarray): Array of time stamps.
-            - positions (numpy.ndarray): Array of position vectors over time.
+            - states (numpy.ndarray): State vector at all propagation timesteps.
         """
         num_steps = int(self.propagator_params['total_time']  / self.propagator_params['delta_t'] ) + 1
-        positions = np.zeros((num_steps, 3))
+        states = np.zeros((num_steps, 6))
         times = np.zeros(num_steps)
 
         print(f"Starting propagation for {num_steps} steps with delta_t = {self.propagator_params['delta_t']} seconds.")
         for step in range(num_steps):
-            positions[step] = self.state[:3]
+            states[step] = self.state
             times[step] = step * self.propagator_params['delta_t']
             if step % 100 == 0 or step == num_steps - 1:
                 print(f"Propagating step {step}/{num_steps - 1}")
             self.rk4_step()
         print("Propagation loop completed.")
 
-        return times, positions
+        return times, states
 
 
 def plot_3d_trajectory(positions):
@@ -163,11 +163,11 @@ if __name__ == "__main__":
 
     # Propagate the orbit
     print("Starting orbital propagation...")
-    times, positions = propagator.propagate_orbit()
+    times, states = propagator.propagate_orbit()
     print("Orbital propagation completed.")
 
     # Plot 3D trajectory
     print("Plotting 3D trajectory...")
-    plot_3d_trajectory(positions)
+    plot_3d_trajectory(states[:, :3])
     print("Plotting completed.")
 
