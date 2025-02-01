@@ -169,37 +169,57 @@ def plot_3d_trajectory(positions):
 
     plt.show()
 
+
 def main():
     # Define orbital parameters
     orbit_params = {
-        'semi_major_axis': 6371e3 + 400e3,  # Earth's radius + 500 km, in meters
-        'eccentricity': 0.0,                # Circular orbit
-        'inclination': 45.0,                 # Degrees
-        'raan': 0.0,                         # Right Ascension of Ascending Node (degrees)
-        'arg_pe': 0.0,                       # Argument of Perigee (degrees)
-        'true_anomaly_0': 0.0,               # True Anomaly at epoch (degrees)
-        'mu': 3.986004418e14,                # Earth's gravitational parameter, m^3/s^2
-        'J2': 1.08263e-3,                    # Earth's J2 coefficient
-        'R_e': 6378137.0                      # Earth's radius in meters
+    'semi_major_axis': 6371e3 + 400e3,  # Earth's radius + 400 km, in meters
+    'eccentricity': 0.1,                  # Elliptical orbit
+    'inclination': 80.0,                  # Degrees (highly inclined)
+    'raan': 0.0,                          # Right Ascension of Ascending Node (degrees)
+    'arg_pe': 0.0,                        # Argument of Perigee (degrees)
+    'true_anomaly_0': 0.0,                # True Anomaly at epoch (degrees)
+    'mu': 3.986004418e14,                 # Earth's gravitational parameter, m^3/s^2
+    'J2': 1.08263e-3,                     # Earth's J2 coefficient
+    'R_e': 6378137.0                       # Earth's radius in meters
     }
+
 
     # Define initial simulation time (UTC)
     initial_time_str = '2024-01-01T00:00:00'
     initial_time_astropy = Time(initial_time_str, scale='utc')
 
     # Define initial state [x, y, z, vx, vy, vz] in meters and m/s
-    # Assuming a circular orbit in ECI frame
+    # Calculate position and velocity at perigee for an elliptical orbit
     a = orbit_params['semi_major_axis']
+    e = orbit_params['eccentricity']
     mu = orbit_params['mu']
-    v0 = np.sqrt(mu / a)  # Circular orbit velocity
+    inclination_deg = orbit_params['inclination']
+    inclination_rad = np.deg2rad(inclination_deg)
+
+    # Position at perigee (x-direction)
+    r_p = a * (1 - e)
+    x_p = r_p
+    y_p = 0.0
+    z_p = 0.0
+
+    # Velocity at perigee (y-direction) with inclination
+    v_p = np.sqrt(mu * (1 + e) / (a * (1 - e)))
+    vx_p = v_p * np.cos(inclination_rad)  # Inclined velocity component
+    vy_p = v_p * np.sin(inclination_rad)
+    vz_p = 0.0
+
+    # Define initial state vector with correct inclination
     initial_state = np.array([
-        orbit_params['semi_major_axis'],  # x position in meters
-        0.0,                              # y position in meters
-        0.0,                              # z position in meters
-        0.0,                              # vx velocity in m/s
-        v0,                               # vy velocity in m/s
-        0.0                               # vz velocity in m/s
+        x_p,    # x position in meters (r_p)
+        y_p,    # y position in meters (0.0)
+        z_p,    # z position in meters (0.0)
+        0.0,    # vx velocity in m/s (0.0)
+        v_p * np.cos(inclination_rad),  # vy velocity in m/s
+        v_p * np.sin(inclination_rad)   # vz velocity in m/s
     ])
+
+
 
     # Initialize Orbital Propagator
     propagator = OrbitalPropagator(initial_state, orbit_params)
@@ -230,6 +250,10 @@ def main():
         print(f"ECI Z: {target_position[2]:.2f} m")
     else:
         print("Target time exceeds simulation duration.")
+
+# define a function I can call from other file to propgate an orbit given orbital elements, initial date, time to progate, delata to propagate, initial state (baiscally main but packaged up)
+# return postion and timestamp of those positions
+
 
 if __name__ == "__main__":
     main()
